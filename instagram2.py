@@ -1,4 +1,6 @@
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -19,79 +21,28 @@ def get_profile_number():
             print("Vui lòng nhập một số hợp lệ.")
 
 def setup_driver():
-    # Đường dẫn đến thư mục User Data của Chrome
-    user_data_dir = os.path.expanduser('~') + r'\AppData\Local\Google\Chrome\User Data'
+    # Đường dẫn đến thư mục profile Firefox
+    profile_path = os.path.expanduser('~') + r'\AppData\Roaming\Mozilla\Firefox\Profiles\up0atl84.default-release'
     
-    # Lấy số profile từ người dùng
-    profile_number = get_profile_number()
-    
-    # Cấu hình Chrome options
-    options = uc.ChromeOptions()
-    options.add_argument(f'--user-data-dir={user_data_dir}')
-    options.add_argument(f'--profile-directory=Profile {profile_number}')
+    # Cấu hình Firefox options
+    options = Options()
+    options.set_preference('profile', profile_path)
     
     # Stealth mode arguments
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-web-security')
-    options.add_argument('--allow-running-insecure-content')
-    options.add_argument('--disable-site-isolation-trials')
-    options.add_argument('--disable-features=IsolateOrigins,site-per-process,SitePerProcess')
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument('--disable-extensions')
-    options.add_argument('--disable-notifications')
-    options.add_argument('--disable-popup-blocking')
-    options.add_argument('--ignore-certificate-errors')
-    options.add_argument('--enable-javascript')
-    
-    # Thêm các arguments mới để tăng cường stealth
-    options.add_argument('--disable-blink-features')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument(f'--window-size={1920 + random.randint(-100, 100)},{1080 + random.randint(-100, 100)}')
-    options.add_argument(f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(90, 108)}.0.0.0 Safari/537.36')
+    options.set_preference('dom.webdriver.enabled', False)
+    options.set_preference('useAutomationExtension', False)
+    options.set_preference('privacy.trackingprotection.enabled', False)
+    options.set_preference('network.cookie.cookieBehavior', 0)
+    options.set_preference('general.useragent.override', f'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{random.randint(90, 108)}.0) Gecko/20100101 Firefox/{random.randint(90, 108)}.0')
     
     # Khởi tạo driver với các tùy chọn đặc biệt
-    driver = uc.Chrome(
-        options=options,
-        version_main=131,
-        use_subprocess=True,
-        headless=False
-    )
+    driver = webdriver.Firefox(options=options)
     
     # Thêm JavaScript để vượt qua automation detection
     js_script = """
     // Override properties
     Object.defineProperty(navigator, 'webdriver', {
         get: () => undefined
-    });
-    
-    // Override permissions
-    const originalQuery = window.navigator.permissions.query;
-    window.navigator.permissions.query = (parameters) => (
-        parameters.name === 'notifications' ?
-        Promise.resolve({ state: Notification.permission }) :
-        originalQuery(parameters)
-    );
-    
-    // Override plugins
-    Object.defineProperty(navigator, 'plugins', {
-        get: () => {
-            return [
-                {
-                    0: {type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format"},
-                    description: "Portable Document Format",
-                    filename: "internal-pdf-viewer",
-                    length: 1,
-                    name: "Chrome PDF Plugin"
-                },
-                {
-                    0: {type: "application/pdf", suffixes: "pdf", description: "Portable Document Format"},
-                    description: "Portable Document Format",
-                    filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai",
-                    length: 1,
-                    name: "Chrome PDF Viewer"
-                }
-            ];
-        }
     });
     
     // Override languages
@@ -103,110 +54,11 @@ def setup_driver():
     Object.defineProperty(navigator, 'platform', {
         get: () => 'Win32'
     });
-    
-    // Override connection
-    Object.defineProperty(navigator, 'connection', {
-        get: () => {
-            return {
-                rtt: 100,
-                downlink: 10,
-                effectiveType: '4g',
-                saveData: false
-            };
-        }
-    });
-    
-    // Override hardware concurrency
-    Object.defineProperty(navigator, 'hardwareConcurrency', {
-        get: () => 8
-    });
-    
-    // Override device memory
-    Object.defineProperty(navigator, 'deviceMemory', {
-        get: () => 8
-    });
-    
-    // Override Chrome
-    window.chrome = {
-        app: {
-            InstallState: {
-                DISABLED: 'disabled',
-                INSTALLED: 'installed',
-                NOT_INSTALLED: 'not_installed'
-            },
-            RunningState: {
-                CANNOT_RUN: 'cannot_run',
-                READY_TO_RUN: 'ready_to_run',
-                RUNNING: 'running'
-            },
-            getDetails: function() {},
-            getIsInstalled: function() {},
-            installState: function() {},
-            isInstalled: false,
-            runningState: function() {}
-        },
-        runtime: {
-            OnInstalledReason: {
-                CHROME_UPDATE: 'chrome_update',
-                INSTALL: 'install',
-                SHARED_MODULE_UPDATE: 'shared_module_update',
-                UPDATE: 'update'
-            },
-            OnRestartRequiredReason: {
-                APP_UPDATE: 'app_update',
-                OS_UPDATE: 'os_update',
-                PERIODIC: 'periodic'
-            },
-            PlatformArch: {
-                ARM: 'arm',
-                ARM64: 'arm64',
-                MIPS: 'mips',
-                MIPS64: 'mips64',
-                X86_32: 'x86-32',
-                X86_64: 'x86-64'
-            },
-            PlatformNaclArch: {
-                ARM: 'arm',
-                MIPS: 'mips',
-                MIPS64: 'mips64',
-                X86_32: 'x86-32',
-                X86_64: 'x86-64'
-            },
-            PlatformOs: {
-                ANDROID: 'android',
-                CROS: 'cros',
-                LINUX: 'linux',
-                MAC: 'mac',
-                OPENBSD: 'openbsd',
-                WIN: 'win'
-            },
-            RequestUpdateCheckStatus: {
-                NO_UPDATE: 'no_update',
-                THROTTLED: 'throttled',
-                UPDATE_AVAILABLE: 'update_available'
-            }
-        }
-    };
     """
     
     try:
-        # Thực thi JavaScript trước khi load trang
-        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-            'source': js_script
-        })
-        
-        # Thêm các CDP commands để tăng cường stealth
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-        })
-        
-        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-            "source": """
-                Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 1});
-                Object.defineProperty(navigator, 'msMaxTouchPoints', {get: () => 1});
-                Object.defineProperty(navigator, 'webkitMaxTouchPoints', {get: () => 1});
-            """
-        })
+        # Thực thi JavaScript
+        driver.execute_script(js_script)
         
     except Exception as e:
         print(f"Lỗi khi thực thi JavaScript: {str(e)}")
@@ -402,7 +254,7 @@ def perform_follow(driver):
                                     print("Đang refresh trang và thử lại...")
                                     driver.refresh()
                                     time.sleep(5)
-                                    
+                            
                         except:
                             continue
                     

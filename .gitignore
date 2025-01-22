@@ -1,4 +1,4 @@
-# Ignore file chứa thông tin tài khoản
+# Ignore list of accounts
 listnick.txt
 
 # Python
@@ -6,20 +6,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Logs
-*.log
-
 # Environment
 .env
 venv/
-ENV/
+env/
 
 # IDE
-.idea/
 .vscode/
-*.swp
-*.swo
+.idea/
 
-# OS
-.DS_Store
-Thumbs.db 
+# Logs
+*.log 

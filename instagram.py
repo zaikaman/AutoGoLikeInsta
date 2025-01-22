@@ -10,20 +10,59 @@ import re
 import psutil
 
 # Danh sách các profile và biến quản lý
-PROFILE = '9' #Profile 9,10,11,18,19,23
+PROFILES = ['23'] # Profile 9, 10, 11, 18, 19, 23
+current_profile_index = 0
+jobs_done = 0
 no_job_count = 0  # Biến đếm số lần gặp thông báo "chưa có jobs mới"
 
+def get_next_profile():
+    global current_profile_index
+    current_profile_index = (current_profile_index + 1) % len(PROFILES)
+    return PROFILES[current_profile_index]
+
+def should_switch_profile(jobs_count):
+    return jobs_count > 0 and jobs_count % 300 == 0
+
 def get_profile_number():
-    return PROFILE
+    global current_profile_index
+    return PROFILES[current_profile_index]
+
+def restart_browser(driver):
+    try:
+        if driver:
+            driver.quit()
+            
+        # Kill tất cả các tiến trình Chrome đang chạy
+        try:
+            # Tìm và kill tất cả các process chrome
+            for proc in psutil.process_iter(['name']):
+                try:
+                    if 'chrome' in proc.info['name'].lower():
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            print("Đã đóng tất cả các tiến trình Chrome")
+            time.sleep(2)  # Đợi các tiến trình được đóng hoàn toàn
+        except Exception as e:
+            print(f"Lỗi khi đóng các tiến trình Chrome: {str(e)}")
+            
+        # Khởi động lại browser với profile mới
+        return setup_driver()
+    except Exception as e:
+        print(f"Lỗi khi khởi động lại trình duyệt: {str(e)}")
+        return None
 
 def setup_driver():
     # Đường dẫn đến thư mục User Data của Chrome
     user_data_dir = os.path.expanduser('~') + r'\AppData\Local\Google\Chrome\User Data'
     
+    # Lấy số profile từ người dùng
+    profile_number = get_profile_number()
+    
     # Cấu hình Chrome options
     options = uc.ChromeOptions()
     options.add_argument(f'--user-data-dir={user_data_dir}')
-    options.add_argument(f'--profile-directory=Profile {PROFILE}')
+    options.add_argument(f'--profile-directory=Profile {profile_number}')
     
     # Stealth mode arguments
     options.add_argument('--no-sandbox')
@@ -32,6 +71,7 @@ def setup_driver():
     options.add_argument('--disable-site-isolation-trials')
     options.add_argument('--disable-features=IsolateOrigins,site-per-process,SitePerProcess')
     options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-extensions')
     options.add_argument('--disable-notifications')
     options.add_argument('--disable-popup-blocking')
     options.add_argument('--ignore-certificate-errors')
@@ -42,25 +82,6 @@ def setup_driver():
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument(f'--window-size={1920 + random.randint(-100, 100)},{1080 + random.randint(-100, 100)}')
     options.add_argument(f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(90, 108)}.0.0.0 Safari/537.36')
-    
-    # Thêm các arguments mới
-    options.add_argument('--disable-gpu')
-    options.add_argument('--disable-3d-apis')
-    options.add_argument('--disable-background-timer-throttling')
-    options.add_argument('--disable-backgrounding-occluded-windows')
-    options.add_argument('--disable-breakpad')
-    options.add_argument('--disable-component-update')
-    options.add_argument('--disable-domain-reliability')
-    options.add_argument('--disable-hang-monitor')
-    options.add_argument('--disable-renderer-backgrounding')
-    options.add_argument('--disable-sync')
-    options.add_argument('--disable-translate')
-    options.add_argument('--disable-features=AudioServiceOutOfProcess')
-    options.add_argument('--disable-features=GlobalMediaControls')
-    options.add_argument('--disable-features=DeJelly')
-    options.add_argument('--disable-features=AutofillServerCommunication')
-    options.add_argument('--disable-features=AutofillShowTypePredictions')
-    options.add_argument('--disable-features=MachineLearningModelLoader')
     
     # Khởi tạo driver với các tùy chọn đặc biệt
     driver = uc.Chrome(
@@ -200,94 +221,6 @@ def setup_driver():
             }
         }
     };
-    
-    // Override vendor
-    Object.defineProperty(navigator, 'vendor', {
-        get: () => 'Google Inc.'
-    });
-    
-    // Override productSub
-    Object.defineProperty(navigator, 'productSub', {
-        get: () => '20100101'
-    });
-    
-    // Override screen properties
-    Object.defineProperties(screen, {
-        availWidth: { get: () => 1920 },
-        availHeight: { get: () => 1080 },
-        width: { get: () => 1920 },
-        height: { get: () => 1080 },
-        colorDepth: { get: () => 24 },
-        pixelDepth: { get: () => 24 }
-    });
-    
-    // Override performance
-    const originalGetEntries = window.performance.getEntries;
-    window.performance.getEntries = function() {
-        return [];
-    };
-    
-    // Override WebGL
-    HTMLCanvasElement.prototype.getContext = (function(origFn) {
-        return function(type, attributes) {
-            if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
-                attributes = Object.assign({}, attributes, {
-                    preserveDrawingBuffer: true
-                });
-            }
-            return origFn.call(this, type, attributes);
-        };
-    })(HTMLCanvasElement.prototype.getContext);
-    
-    // Override Notification
-    if (typeof Notification !== 'undefined') {
-        Object.defineProperty(Notification, 'permission', {
-            get: () => 'default'
-        });
-    }
-    
-    // Override tls fingerprint
-    Object.defineProperty(navigator, 'userAgent', {
-        get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
-    });
-    
-    // Override HTTP/2 và HTTP/3 fingerprint
-    Object.defineProperty(window, 'chrome', {
-        get: function() {
-            return {
-                loadTimes: function() {},
-                csi: function() {},
-                app: {
-                    isInstalled: false,
-                },
-                runtime: {}
-            };
-        }
-    });
-    
-    // Override font fingerprint
-    Object.defineProperty(document, 'fonts', {
-        get: () => {
-            return {
-                ready: Promise.resolve(),
-                check: () => false,
-                load: () => Promise.reject(),
-            }
-        }
-    });
-    
-    // Override canvas fingerprint
-    const getImageData = CanvasRenderingContext2D.prototype.getImageData;
-    CanvasRenderingContext2D.prototype.getImageData = function(x, y, w, h) {
-        const imageData = getImageData.call(this, x, y, w, h);
-        for (let i = 0; i < imageData.data.length; i += 4) {
-            imageData.data[i] = Math.floor(Math.random() * 256);
-            imageData.data[i + 1] = Math.floor(Math.random() * 256);
-            imageData.data[i + 2] = Math.floor(Math.random() * 256);
-            imageData.data[i + 3] = 255;
-        }
-        return imageData;
-    };
     """
     
     try:
@@ -307,73 +240,6 @@ def setup_driver():
                 Object.defineProperty(navigator, 'msMaxTouchPoints', {get: () => 1});
                 Object.defineProperty(navigator, 'webkitMaxTouchPoints', {get: () => 1});
             """
-        })
-        
-        # Thêm các CDP commands mới
-        driver.execute_cdp_cmd('Emulation.setIdleOverride', {
-            'isUserActive': True,
-            'isScreenUnlocked': True
-        })
-        
-        driver.execute_cdp_cmd('Network.enable', {})
-        driver.execute_cdp_cmd('Network.setBypassServiceWorker', {'bypass': True})
-        
-        # Thêm CDP commands mới để tránh Cloudflare
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
-            'platform': 'Win32',
-            'acceptLanguage': 'en-US,en;q=0.9'
-        })
-        
-        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-            'source': """
-                // Override TLS fingerprint
-                Object.defineProperty(navigator, 'connection', {
-                    get: () => ({
-                        effectiveType: '4g',
-                        rtt: 50,
-                        downlink: 10,
-                        saveData: false
-                    })
-                });
-                
-                // Override HTTP/2 fingerprint
-                Object.defineProperty(window, 'chrome', {
-                    get: () => ({
-                        runtime: {},
-                        loadTimes: () => {},
-                        csi: () => {},
-                        app: { isInstalled: false }
-                    })
-                });
-                
-                // Override font fingerprint
-                Object.defineProperty(document, 'fonts', {
-                    get: () => ({
-                        ready: Promise.resolve(),
-                        check: () => false,
-                        load: () => Promise.reject()
-                    })
-                });
-            """
-        })
-        
-        # Thêm các headers để tránh Cloudflare
-        driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {
-            'headers': {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-User': '?1',
-                'Sec-Fetch-Dest': 'document',
-                'sec-ch-ua': '"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"'
-            }
         })
         
     except Exception as e:
@@ -495,10 +361,61 @@ def get_job_count_from_modal(driver):
             if match:
                 completed_jobs = int(match.group(1))
                 print(f"Số job đã làm hôm nay: {completed_jobs}")
+                
+                # Kiểm tra xem có cần đổi profile không
+                if should_switch_profile(completed_jobs):
+                    next_profile = get_next_profile()
+                    print(f"Đã đạt {completed_jobs} jobs. Chuyển sang profile {next_profile}")
+                    return completed_jobs, True
                 return completed_jobs, False
     except Exception as e:
         print(f"Không thể lấy số job từ modal: {str(e)}")
     return None, False
+
+def switch_to_next_profile(driver):
+    try:
+        # Đóng driver hiện tại nếu có
+        if driver:
+            driver.quit()
+            
+        # Kill tất cả các tiến trình Chrome đang chạy
+        try:
+            for proc in psutil.process_iter(['name']):
+                try:
+                    if 'chrome' in proc.info['name'].lower():
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            print("Đã đóng tất cả các tiến trình Chrome")
+            time.sleep(2)  # Đợi các tiến trình được đóng hoàn toàn
+        except Exception as e:
+            print(f"Lỗi khi đóng các tiến trình Chrome: {str(e)}")
+        
+        # Lấy profile tiếp theo
+        next_profile = get_next_profile()
+        print(f"Chuyển sang profile {next_profile}")
+        
+        # Khởi động lại browser với profile mới
+        new_driver = setup_driver()
+        if new_driver:
+            new_driver.get('https://app.golike.net/jobs/instagram')
+            try:
+                # Đợi để trang load hoàn toàn
+                WebDriverWait(new_driver, 30).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                )
+                # Đợi thêm để đảm bảo trang đã load xong
+                time.sleep(5)
+                return new_driver
+            except Exception as e:
+                print(f"Lỗi khi load trang Golike: {str(e)}")
+                if new_driver:
+                    new_driver.quit()
+                return None
+        return None
+    except Exception as e:
+        print(f"Lỗi khi chuyển profile: {str(e)}")
+        return None
 
 def check_reload_message(driver):
     try:
@@ -532,6 +449,17 @@ def check_reload_message(driver):
             ok_button.click()
             print("Đã click nút OK")
             time.sleep(2)  # Đợi modal đóng
+            
+            # Nếu gặp thông báo quá 5 lần, chuyển profile
+            if no_job_count >= 50000:
+                print("Đã gặp thông báo không có job mới quá 5 lần, chuyển profile")
+                no_job_count = 0  # Reset biến đếm
+                new_driver = switch_to_next_profile(driver)
+                if new_driver:
+                    return True, new_driver
+                else:
+                    print("Không thể khởi tạo driver mới, tiếp tục với driver cũ")
+                    return True, driver
             return True, driver
         return False, driver
     except:
@@ -644,7 +572,9 @@ def perform_follow(driver):
                 if len(driver.window_handles) > 1:
                     driver.close()
                     driver.switch_to.window(driver.window_handles[0])
-                return False, False
+                # Chuyển sang profile tiếp theo do rate limit
+                driver = switch_to_next_profile(driver)
+                return False, True
 
         time.sleep(3)
 
@@ -693,7 +623,7 @@ def perform_follow(driver):
                     print("Đã click nút OK")
                     time.sleep(2)  # Đợi popup đóng
                     
-                    return True, False
+                    return True, need_switch
                 else:
                     print("Không tìm thấy nút Hoàn thành")
                     return False, False
@@ -821,7 +751,7 @@ def perform_like(driver):
                 print("Đã click nút OK")
                 time.sleep(2)  # Đợi popup đóng
                 
-                return True, False
+                return True, need_switch
             else:
                 print("Không tìm thấy nút Hoàn thành")
                 return False, False
@@ -881,6 +811,13 @@ def main():
                     else:
                         print("Không phải job follow hoặc like, bỏ qua")
                         success, need_switch = False, False
+                    
+                    # Nếu job thành công và cần đổi profile hoặc bị rate limit
+                    if need_switch:
+                        driver = switch_to_next_profile(driver)
+                        if not driver:
+                            print("Không thể khởi tạo driver mới, thoát chương trình")
+                            break
                 
                 time.sleep(3)  # Đợi một chút trước khi tìm job mới
                 
@@ -892,10 +829,11 @@ def main():
                     time.sleep(5)
                 except:
                     # Nếu không thể refresh, thử khởi động lại driver
-                    print("Không thể refresh trang, thoát chương trình")
-                    if driver:
-                        driver.quit()
-                    break
+                    print("Không thể refresh trang, thử khởi động lại driver")
+                    driver = switch_to_next_profile(driver)
+                    if not driver:
+                        print("Không thể khởi tạo driver mới, thoát chương trình")
+                        break
     except Exception as e:
         print(f"Có lỗi xảy ra trong main: {str(e)}")
         if 'driver' in locals():

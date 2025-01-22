@@ -6,17 +6,51 @@ import os
 import time
 from selenium.webdriver.common.action_chains import ActionChains
 import random
+import re
+import psutil
+
+# Danh sách các profile và biến quản lý
+PROFILES = ['10', '11', '18', '19', '23']
+current_profile_index = 0
+jobs_done = 0
+no_job_count = 0  # Biến đếm số lần gặp thông báo "chưa có jobs mới"
+
+def get_next_profile():
+    global current_profile_index
+    current_profile_index = (current_profile_index + 1) % len(PROFILES)
+    return PROFILES[current_profile_index]
+
+def should_switch_profile(jobs_count):
+    return jobs_count > 0 and jobs_count % 20 == 0
 
 def get_profile_number():
-    while True:
+    global current_profile_index
+    return PROFILES[current_profile_index]
+
+def restart_browser(driver):
+    try:
+        if driver:
+            driver.quit()
+            
+        # Kill tất cả các tiến trình Chrome đang chạy
         try:
-            profile_num = input("Nhập số profile Chrome bạn muốn sử dụng (ví dụ: 10, 11, 18, 19, 23...): ")
-            if profile_num.isdigit() and int(profile_num) > 0:
-                return profile_num
-            else:
-                print("Vui lòng nhập một số nguyên dương.")
-        except ValueError:
-            print("Vui lòng nhập một số hợp lệ.")
+            # Tìm và kill tất cả các process chrome
+            for proc in psutil.process_iter(['name']):
+                try:
+                    if 'chrome' in proc.info['name'].lower():
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            print("Đã đóng tất cả các tiến trình Chrome")
+            time.sleep(2)  # Đợi các tiến trình được đóng hoàn toàn
+        except Exception as e:
+            print(f"Lỗi khi đóng các tiến trình Chrome: {str(e)}")
+            
+        # Khởi động lại browser với profile mới
+        return setup_driver()
+    except Exception as e:
+        print(f"Lỗi khi khởi động lại trình duyệt: {str(e)}")
+        return None
 
 def setup_driver():
     # Đường dẫn đến thư mục User Data của Chrome
@@ -312,6 +346,114 @@ def handle_instagram_error(driver):
         print(f"Lỗi khi xử lý báo lỗi: {str(e)}")
         return False
 
+def get_job_count_from_modal(driver):
+    try:
+        # Đợi modal xuất hiện và lấy nội dung
+        modal_content = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div#swal2-content"))
+        )
+        
+        # Tìm số job trong nội dung modal
+        content_text = modal_content.text
+        if "số jobs đã làm trong ngày" in content_text.lower():
+            # Tìm số job bằng regex
+            match = re.search(r'số jobs đã làm trong ngày\s*(\d+)', content_text.lower())
+            if match:
+                completed_jobs = int(match.group(1))
+                print(f"Số job đã làm hôm nay: {completed_jobs}")
+                
+                # Kiểm tra xem có cần đổi profile không
+                if should_switch_profile(completed_jobs):
+                    next_profile = get_next_profile()
+                    print(f"Đã đạt {completed_jobs} jobs. Chuyển sang profile {next_profile}")
+                    return completed_jobs, True
+                return completed_jobs, False
+    except Exception as e:
+        print(f"Không thể lấy số job từ modal: {str(e)}")
+    return None, False
+
+def switch_to_next_profile(driver):
+    try:
+        # Đóng driver hiện tại nếu có
+        if driver:
+            driver.quit()
+            
+        # Kill tất cả các tiến trình Chrome đang chạy
+        try:
+            for proc in psutil.process_iter(['name']):
+                try:
+                    if 'chrome' in proc.info['name'].lower():
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            print("Đã đóng tất cả các tiến trình Chrome")
+            time.sleep(2)  # Đợi các tiến trình được đóng hoàn toàn
+        except Exception as e:
+            print(f"Lỗi khi đóng các tiến trình Chrome: {str(e)}")
+        
+        # Lấy profile tiếp theo
+        next_profile = get_next_profile()
+        print(f"Chuyển sang profile {next_profile}")
+        
+        # Khởi động lại browser với profile mới
+        new_driver = setup_driver()
+        if new_driver:
+            new_driver.get('https://app.golike.net/jobs/instagram')
+            time.sleep(5)
+            return new_driver
+        return None
+    except Exception as e:
+        print(f"Lỗi khi chuyển profile: {str(e)}")
+        return None
+
+def check_reload_message(driver):
+    try:
+        global no_job_count
+        # Kiểm tra thông báo trên modal
+        modal_content = WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((By.ID, "swal2-content"))
+        )
+        content_text = modal_content.text.lower()
+        
+        # Xử lý các loại thông báo
+        if "vui lòng bấm lại load job" in content_text:
+            print("Phát hiện thông báo:", modal_content.text)
+            # Click nút OK trên modal
+            ok_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
+            )
+            ok_button.click()
+            print("Đã click nút OK")
+            time.sleep(2)  # Đợi modal đóng
+            return True, driver
+        elif "hiện tại chưa có jobs mới" in content_text:
+            print("Phát hiện thông báo:", modal_content.text)
+            no_job_count += 1
+            print(f"Đã gặp thông báo không có job mới {no_job_count} lần")
+            
+            # Click nút OK trên modal
+            ok_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
+            )
+            ok_button.click()
+            print("Đã click nút OK")
+            time.sleep(2)  # Đợi modal đóng
+            
+            # Nếu gặp thông báo quá 5 lần, chuyển profile
+            if no_job_count >= 5:
+                print("Đã gặp thông báo không có job mới quá 5 lần, chuyển profile")
+                no_job_count = 0  # Reset biến đếm
+                new_driver = switch_to_next_profile(driver)
+                if new_driver:
+                    return True, new_driver
+                else:
+                    print("Không thể khởi tạo driver mới, tiếp tục với driver cũ")
+                    return True, driver
+            return True, driver
+        return False, driver
+    except:
+        return False, driver
+
 def perform_follow(driver):
     try:
         # Click vào link Instagram
@@ -357,7 +499,7 @@ def perform_follow(driver):
             try:
                 # Kiểm tra xem đã follow chưa
                 try:
-                    following_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Following') or contains(text(), 'Requested')]")
+                    following_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Following') or contains(text(), 'Requested') or contains(text(), 'Đang theo dõi')]")
                     print("Đã follow tài khoản này trước đó")
                     follow_clicked = True
                     break
@@ -415,8 +557,13 @@ def perform_follow(driver):
             current_retry += 1
             if current_retry == max_retries:
                 print("Tài khoản Instagram đã bị rate limited")
-                driver.quit()
-                exit()
+                # Đóng tab Instagram và quay lại tab Golike
+                if len(driver.window_handles) > 1:
+                    driver.close()
+                    driver.switch_to.window(driver.window_handles[0])
+                # Chuyển sang profile tiếp theo do rate limit
+                driver = switch_to_next_profile(driver)
+                return False, True
 
         time.sleep(3)
 
@@ -450,32 +597,40 @@ def perform_follow(driver):
                     # Click nút Hoàn thành
                     complete_button.click()
                     print("Đã click nút Hoàn thành")
+
+                    time.sleep(1)
                     
                     # Đợi và click nút OK trên popup
                     ok_button = WebDriverWait(driver, 10).until(
                         EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
                     )
+                    
+                    # Lấy số job đã làm trước khi click OK
+                    jobs_count, need_switch = get_job_count_from_modal(driver)
+                    
                     ok_button.click()
                     print("Đã click nút OK")
                     time.sleep(2)  # Đợi popup đóng
+                    
+                    return True, need_switch
                 else:
                     print("Không tìm thấy nút Hoàn thành")
-                    return False
+                    return False, False
                 
             except Exception as e:
                 print(f"Không thể click nút Hoàn thành hoặc OK: {str(e)}")
-                return False
+                return False, False
                 
-            return True
+            return True, False
         
-        return False
+        return False, False
         
     except Exception as e:
         print(f"Không thể thực hiện follow: {str(e)}")
         if len(driver.window_handles) > 1:
             driver.close()
             driver.switch_to.window(driver.window_handles[0])
-        return False
+        return False, False
 
 def perform_like(driver):
     try:
@@ -522,7 +677,7 @@ def perform_like(driver):
                 print("Bài viết này đã được like trước đó")
                 driver.close()
                 driver.switch_to.window(driver.window_handles[0])
-                return False
+                return False, False
             except:
                 pass
 
@@ -539,7 +694,7 @@ def perform_like(driver):
             if len(driver.window_handles) > 1:
                 driver.close()
                 driver.switch_to.window(driver.window_handles[0])
-            return False
+            return False, False
         
         time.sleep(3)
         
@@ -577,45 +732,31 @@ def perform_like(driver):
                 ok_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
                 )
+                
+                # Lấy số job đã làm trước khi click OK
+                jobs_count, need_switch = get_job_count_from_modal(driver)
+                
                 ok_button.click()
                 print("Đã click nút OK")
                 time.sleep(2)  # Đợi popup đóng
+                
+                return True, need_switch
             else:
                 print("Không tìm thấy nút Hoàn thành")
-                return False
+                return False, False
             
         except Exception as e:
             print(f"Không thể click nút Hoàn thành hoặc OK: {str(e)}")
-            return False
+            return False, False
             
-        return True
+        return True, False
         
     except Exception as e:
         print(f"Không thể thực hiện like: {str(e)}")
         if len(driver.window_handles) > 1:
             driver.close()
             driver.switch_to.window(driver.window_handles[0])
-        return False
-
-def check_reload_message(driver):
-    try:
-        # Kiểm tra thông báo "Vui lòng bấm lại load job"
-        reload_message = WebDriverWait(driver, 3).until(
-            EC.presence_of_element_located((By.ID, "swal2-content"))
-        )
-        if "Vui lòng bấm lại load job" in reload_message.text:
-            print("Phát hiện thông báo yêu cầu load lại job")
-            # Click nút OK trên modal
-            ok_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
-            )
-            ok_button.click()
-            print("Đã click nút OK")
-            time.sleep(2)  # Đợi modal đóng
-            return True
-        return False
-    except:
-        return False
+        return False, False
 
 def main():
     try:
@@ -633,7 +774,8 @@ def main():
         while True:
             try:
                 # Kiểm tra thông báo reload
-                if check_reload_message(driver):
+                reload_needed, driver = check_reload_message(driver)
+                if reload_needed:
                     print("Đang chờ job mới...")
                     time.sleep(3)  # Đợi một chút trước khi tiếp tục
                     continue
@@ -643,14 +785,24 @@ def main():
                     time.sleep(2)
                     # Kiểm tra loại job
                     job_type = check_job_type(driver)
+                    success, need_switch = False, False
+                    
                     if job_type == "follow":
                         print("Đã tìm thấy job follow")
-                        perform_follow(driver)
+                        success, need_switch = perform_follow(driver)
                     elif job_type == "like":
                         print("Đã tìm thấy job like")
-                        perform_like(driver)
+                        success, need_switch = perform_like(driver)
                     else:
                         print("Không phải job follow hoặc like, bỏ qua")
+                        success, need_switch = False, False
+                    
+                    # Nếu job thành công và cần đổi profile hoặc bị rate limit
+                    if need_switch:
+                        driver = switch_to_next_profile(driver)
+                        if not driver:
+                            print("Không thể khởi tạo driver mới, thoát chương trình")
+                            break
                 
                 time.sleep(3)  # Đợi một chút trước khi tìm job mới
                 
@@ -661,7 +813,12 @@ def main():
                     driver.refresh()
                     time.sleep(5)
                 except:
-                    pass
+                    # Nếu không thể refresh, thử khởi động lại driver
+                    print("Không thể refresh trang, thử khởi động lại driver")
+                    driver = switch_to_next_profile(driver)
+                    if not driver:
+                        print("Không thể khởi tạo driver mới, thoát chương trình")
+                        break
             
     except Exception as e:
         print(f"Có lỗi xảy ra: {str(e)}")

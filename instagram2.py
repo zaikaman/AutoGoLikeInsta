@@ -8,6 +8,10 @@ import os
 import time
 from selenium.webdriver.common.action_chains import ActionChains
 import random
+import re
+
+# Biến quản lý
+no_job_count = 0  # Biến đếm số lần gặp thông báo "chưa có jobs mới"
 
 def get_profile_number():
     while True:
@@ -35,6 +39,43 @@ def setup_driver():
     options.set_preference('network.cookie.cookieBehavior', 0)
     options.set_preference('general.useragent.override', f'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{random.randint(90, 108)}.0) Gecko/20100101 Firefox/{random.randint(90, 108)}.0')
     
+    # Thêm các preferences mới để tăng cường stealth
+    options.set_preference('media.navigator.enabled', False)
+    options.set_preference('media.peerconnection.enabled', False)
+    options.set_preference('privacy.resistFingerprinting', False)
+    options.set_preference('webgl.disabled', False)
+    options.set_preference('dom.battery.enabled', False)
+    options.set_preference('geo.enabled', False)
+    options.set_preference('browser.cache.disk.enable', True)
+    options.set_preference('browser.cache.memory.enable', True)
+    options.set_preference('browser.cache.offline.enable', True)
+    options.set_preference('network.http.use-cache', True)
+    options.set_preference('general.platform.override', "Win32")
+    options.set_preference('general.appversion.override', f'5.0 (Windows)')
+    options.set_preference('general.oscpu.override', 'Windows NT 10.0; Win64; x64')
+    options.set_preference('general.buildID.override', '20100101')
+    options.set_preference('browser.startup.page', 0)
+    options.set_preference('browser.sessionstore.enabled', True)
+    options.set_preference('dom.enable_performance', False)
+    options.set_preference('dom.enable_resource_timing', False)
+    options.set_preference('dom.enable_user_timing', False)
+    options.set_preference('dom.gamepad.enabled', False)
+    options.set_preference('dom.vr.enabled', False)
+    options.set_preference('dom.vibrator.enabled', False)
+    options.set_preference('dom.archivereader.enabled', False)
+    options.set_preference('dom.flyweb.enabled', False)
+    options.set_preference('dom.serviceWorkers.enabled', False)
+    options.set_preference('dom.workers.enabled', False)
+    options.set_preference('dom.maxHardwareConcurrency', 8)
+    options.set_preference('dom.enable_performance_navigation_timing', False)
+    options.set_preference('dom.enable_performance_observer', False)
+    options.set_preference('dom.webaudio.enabled', False)
+    options.set_preference('media.video_stats.enabled', False)
+    options.set_preference('media.ondevicechange.enabled', False)
+    options.set_preference('device.sensors.enabled', False)
+    options.set_preference('browser.zoom.siteSpecific', False)
+    options.set_preference('layout.css.visited_links_enabled', False)
+    
     # Khởi tạo driver với các tùy chọn đặc biệt
     driver = webdriver.Firefox(options=options)
     
@@ -43,6 +84,29 @@ def setup_driver():
     // Override properties
     Object.defineProperty(navigator, 'webdriver', {
         get: () => undefined
+    });
+    
+    // Override permissions
+    const originalQuery = window.navigator.permissions.query;
+    window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications' ?
+        Promise.resolve({ state: Notification.permission }) :
+        originalQuery(parameters)
+    );
+    
+    // Override plugins
+    Object.defineProperty(navigator, 'plugins', {
+        get: () => {
+            return [
+                {
+                    0: {type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format"},
+                    description: "Portable Document Format",
+                    filename: "internal-pdf-viewer",
+                    length: 1,
+                    name: "PDF Viewer"
+                }
+            ];
+        }
     });
     
     // Override languages
@@ -54,10 +118,92 @@ def setup_driver():
     Object.defineProperty(navigator, 'platform', {
         get: () => 'Win32'
     });
+    
+    // Override hardware concurrency
+    Object.defineProperty(navigator, 'hardwareConcurrency', {
+        get: () => 8
+    });
+    
+    // Override device memory
+    Object.defineProperty(navigator, 'deviceMemory', {
+        get: () => 8
+    });
+    
+    // Override connection
+    Object.defineProperty(navigator, 'connection', {
+        get: () => {
+            return {
+                rtt: 100,
+                downlink: 10,
+                effectiveType: '4g',
+                saveData: false
+            };
+        }
+    });
+    
+    // Override CPU
+    Object.defineProperty(navigator, 'oscpu', {
+        get: () => 'Windows NT 10.0; Win64; x64'
+    });
+    
+    // Override vendor
+    Object.defineProperty(navigator, 'vendor', {
+        get: () => ''
+    });
+    
+    // Override touch points
+    Object.defineProperty(navigator, 'maxTouchPoints', {
+        get: () => 0
+    });
+    
+    // Override productSub
+    Object.defineProperty(navigator, 'productSub', {
+        get: () => '20100101'
+    });
+    
+    // Override BuildID
+    Object.defineProperty(navigator, 'buildID', {
+        get: () => '20100101'
+    });
+    
+    // Override screen properties
+    Object.defineProperties(screen, {
+        availWidth: { get: () => 1920 },
+        availHeight: { get: () => 1080 },
+        width: { get: () => 1920 },
+        height: { get: () => 1080 },
+        colorDepth: { get: () => 24 },
+        pixelDepth: { get: () => 24 }
+    });
+    
+    // Override performance
+    const originalGetEntries = window.performance.getEntries;
+    window.performance.getEntries = function() {
+        return [];
+    };
+    
+    // Override WebGL
+    HTMLCanvasElement.prototype.getContext = (function(origFn) {
+        return function(type, attributes) {
+            if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
+                attributes = Object.assign({}, attributes, {
+                    preserveDrawingBuffer: true
+                });
+            }
+            return origFn.call(this, type, attributes);
+        };
+    })(HTMLCanvasElement.prototype.getContext);
+    
+    // Override Notification
+    if (typeof Notification !== 'undefined') {
+        Object.defineProperty(Notification, 'permission', {
+            get: () => 'default'
+        });
+    }
     """
     
     try:
-        # Thực thi JavaScript
+        # Thực thi JavaScript trước khi load trang
         driver.execute_script(js_script)
         
     except Exception as e:
@@ -164,6 +310,63 @@ def handle_instagram_error(driver):
         print(f"Lỗi khi xử lý báo lỗi: {str(e)}")
         return False
 
+def get_job_count_from_modal(driver):
+    try:
+        # Đợi modal xuất hiện và lấy nội dung
+        modal_content = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div#swal2-content"))
+        )
+        
+        # Tìm số job trong nội dung modal
+        content_text = modal_content.text
+        if "số jobs đã làm trong ngày" in content_text.lower():
+            # Tìm số job bằng regex
+            match = re.search(r'số jobs đã làm trong ngày\s*(\d+)', content_text.lower())
+            if match:
+                completed_jobs = int(match.group(1))
+                print(f"Số job đã làm hôm nay: {completed_jobs}")
+                return completed_jobs, False
+    except Exception as e:
+        print(f"Không thể lấy số job từ modal: {str(e)}")
+    return None, False
+
+def check_reload_message(driver):
+    try:
+        global no_job_count
+        # Kiểm tra thông báo trên modal
+        modal_content = WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((By.ID, "swal2-content"))
+        )
+        content_text = modal_content.text.lower()
+        
+        # Xử lý các loại thông báo
+        if "vui lòng bấm lại load job" in content_text:
+            print("Phát hiện thông báo:", modal_content.text)
+            # Click nút OK trên modal
+            ok_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
+            )
+            ok_button.click()
+            print("Đã click nút OK")
+            time.sleep(2)  # Đợi modal đóng
+            return True, driver
+        elif "hiện tại chưa có jobs mới" in content_text:
+            print("Phát hiện thông báo:", modal_content.text)
+            no_job_count += 1
+            print(f"Đã gặp thông báo không có job mới {no_job_count} lần")
+            
+            # Click nút OK trên modal
+            ok_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
+            )
+            ok_button.click()
+            print("Đã click nút OK")
+            time.sleep(2)  # Đợi modal đóng
+            return True, driver
+        return False, driver
+    except:
+        return False, driver
+
 def perform_follow(driver):
     try:
         # Click vào link Instagram
@@ -209,7 +412,7 @@ def perform_follow(driver):
             try:
                 # Kiểm tra xem đã follow chưa
                 try:
-                    following_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Following') or contains(text(), 'Requested')]")
+                    following_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Following') or contains(text(), 'Requested') or contains(text(), 'Đang theo dõi')]")
                     print("Đã follow tài khoản này trước đó")
                     follow_clicked = True
                     break
@@ -254,7 +457,7 @@ def perform_follow(driver):
                                     print("Đang refresh trang và thử lại...")
                                     driver.refresh()
                                     time.sleep(5)
-                            
+                                    
                         except:
                             continue
                     
@@ -267,8 +470,11 @@ def perform_follow(driver):
             current_retry += 1
             if current_retry == max_retries:
                 print("Tài khoản Instagram đã bị rate limited")
-                driver.quit()
-                exit()
+                # Đóng tab Instagram và quay lại tab Golike
+                if len(driver.window_handles) > 1:
+                    driver.close()
+                    driver.switch_to.window(driver.window_handles[0])
+                return False, False
 
         time.sleep(3)
 
@@ -302,32 +508,40 @@ def perform_follow(driver):
                     # Click nút Hoàn thành
                     complete_button.click()
                     print("Đã click nút Hoàn thành")
+
+                    time.sleep(1)
                     
                     # Đợi và click nút OK trên popup
                     ok_button = WebDriverWait(driver, 10).until(
                         EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
                     )
+                    
+                    # Lấy số job đã làm trước khi click OK
+                    jobs_count, need_switch = get_job_count_from_modal(driver)
+                    
                     ok_button.click()
                     print("Đã click nút OK")
                     time.sleep(2)  # Đợi popup đóng
+                    
+                    return True, False
                 else:
                     print("Không tìm thấy nút Hoàn thành")
-                    return False
+                    return False, False
                 
             except Exception as e:
                 print(f"Không thể click nút Hoàn thành hoặc OK: {str(e)}")
-                return False
+                return False, False
                 
-            return True
+            return True, False
         
-        return False
+        return False, False
         
     except Exception as e:
         print(f"Không thể thực hiện follow: {str(e)}")
         if len(driver.window_handles) > 1:
             driver.close()
             driver.switch_to.window(driver.window_handles[0])
-        return False
+        return False, False
 
 def perform_like(driver):
     try:
@@ -374,7 +588,7 @@ def perform_like(driver):
                 print("Bài viết này đã được like trước đó")
                 driver.close()
                 driver.switch_to.window(driver.window_handles[0])
-                return False
+                return False, False
             except:
                 pass
 
@@ -391,7 +605,7 @@ def perform_like(driver):
             if len(driver.window_handles) > 1:
                 driver.close()
                 driver.switch_to.window(driver.window_handles[0])
-            return False
+            return False, False
         
         time.sleep(3)
         
@@ -429,51 +643,40 @@ def perform_like(driver):
                 ok_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
                 )
+                
+                # Lấy số job đã làm trước khi click OK
+                jobs_count, need_switch = get_job_count_from_modal(driver)
+                
                 ok_button.click()
                 print("Đã click nút OK")
                 time.sleep(2)  # Đợi popup đóng
+                
+                return True, False
             else:
                 print("Không tìm thấy nút Hoàn thành")
-                return False
+                return False, False
             
         except Exception as e:
             print(f"Không thể click nút Hoàn thành hoặc OK: {str(e)}")
-            return False
+            return False, False
             
-        return True
+        return True, False
         
     except Exception as e:
         print(f"Không thể thực hiện like: {str(e)}")
         if len(driver.window_handles) > 1:
             driver.close()
             driver.switch_to.window(driver.window_handles[0])
-        return False
-
-def check_reload_message(driver):
-    try:
-        # Kiểm tra thông báo "Vui lòng bấm lại load job"
-        reload_message = WebDriverWait(driver, 3).until(
-            EC.presence_of_element_located((By.ID, "swal2-content"))
-        )
-        if "Vui lòng bấm lại load job" in reload_message.text:
-            print("Phát hiện thông báo yêu cầu load lại job")
-            # Click nút OK trên modal
-            ok_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
-            )
-            ok_button.click()
-            print("Đã click nút OK")
-            time.sleep(2)  # Đợi modal đóng
-            return True
-        return False
-    except:
-        return False
+        return False, False
 
 def main():
     try:
         # Khởi tạo driver
         driver = setup_driver()
-        
+        if not driver:
+            print("Không thể khởi tạo driver, thoát chương trình")
+            return
+            
         # Truy cập trang Golike
         driver.get('https://app.golike.net/jobs/instagram')
         
@@ -481,11 +684,13 @@ def main():
         WebDriverWait(driver, 30).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
+        time.sleep(5)  # Đợi thêm để đảm bảo trang đã load xong
         
         while True:
             try:
                 # Kiểm tra thông báo reload
-                if check_reload_message(driver):
+                reload_needed, driver = check_reload_message(driver)
+                if reload_needed:
                     print("Đang chờ job mới...")
                     time.sleep(3)  # Đợi một chút trước khi tiếp tục
                     continue
@@ -495,14 +700,17 @@ def main():
                     time.sleep(2)
                     # Kiểm tra loại job
                     job_type = check_job_type(driver)
+                    success, need_switch = False, False
+                    
                     if job_type == "follow":
                         print("Đã tìm thấy job follow")
-                        perform_follow(driver)
+                        success, need_switch = perform_follow(driver)
                     elif job_type == "like":
                         print("Đã tìm thấy job like")
-                        perform_like(driver)
+                        success, need_switch = perform_like(driver)
                     else:
                         print("Không phải job follow hoặc like, bỏ qua")
+                        success, need_switch = False, False
                 
                 time.sleep(3)  # Đợi một chút trước khi tìm job mới
                 
@@ -513,10 +721,13 @@ def main():
                     driver.refresh()
                     time.sleep(5)
                 except:
-                    pass
-            
+                    # Nếu không thể refresh, thử khởi động lại driver
+                    print("Không thể refresh trang, thoát chương trình")
+                    if driver:
+                        driver.quit()
+                    break
     except Exception as e:
-        print(f"Có lỗi xảy ra: {str(e)}")
+        print(f"Có lỗi xảy ra trong main: {str(e)}")
         if 'driver' in locals():
             driver.quit()
 

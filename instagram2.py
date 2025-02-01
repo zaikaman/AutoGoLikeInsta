@@ -28,12 +28,14 @@ def setup_driver():
     options = Options()
     options.set_preference('profile', profile_path)
     
-    # Stealth mode arguments
+    # Set iOS Safari user agent
+    options.set_preference('general.useragent.override', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1')
+    
+    # Stealth mode settings
     options.set_preference('dom.webdriver.enabled', False)
     options.set_preference('useAutomationExtension', False)
     options.set_preference('privacy.trackingprotection.enabled', False)
     options.set_preference('network.cookie.cookieBehavior', 0)
-    options.set_preference('general.useragent.override', f'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{random.randint(90, 108)}.0) Gecko/20100101 Firefox/{random.randint(90, 108)}.0')
     
     # Khởi tạo driver với các tùy chọn đặc biệt
     driver = webdriver.Firefox(options=options)
@@ -63,6 +65,9 @@ def setup_driver():
     except Exception as e:
         print(f"Lỗi khi thực thi JavaScript: {str(e)}")
     
+    # Set window size
+    driver.set_window_size(1920, 1080)
+    
     return driver
 
 def click_nhan_job(driver):
@@ -89,10 +94,12 @@ def check_job_type(driver):
             return "follow"
         elif "TĂNG LIKE CHO BÀI VIẾT" in job_text:
             return "like"
-        return None
+        # Nếu không phải follow hoặc like, mặc định là follow
+        print("Job không xác định, xử lý như job follow")
+        return "follow"
     except Exception as e:
         print(f"Không thể kiểm tra loại job: {str(e)}")
-        return None
+        return "follow"  # Mặc định là follow nếu có lỗi
 
 def handle_instagram_error(driver):
     try:
@@ -265,10 +272,15 @@ def perform_follow(driver):
                 print(f"Lỗi khi thử follow lần {current_retry + 1}: {str(e)}")
             
             current_retry += 1
-            if current_retry == max_retries:
-                print("Tài khoản Instagram đã bị rate limited")
-                driver.quit()
-                exit()
+
+        # Nếu không tìm thấy hoặc không thể click nút Follow sau tất cả các lần thử
+        if not follow_clicked:
+            print("Không tìm thấy hoặc không thể click nút Follow")
+            # Đóng tab Instagram và quay lại tab Golike
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+            # Xử lý báo lỗi
+            return handle_instagram_error(driver)
 
         time.sleep(3)
 
@@ -451,12 +463,25 @@ def perform_like(driver):
 
 def check_reload_message(driver):
     try:
-        # Kiểm tra thông báo "Vui lòng bấm lại load job"
-        reload_message = WebDriverWait(driver, 3).until(
+        # Kiểm tra thông báo trên modal
+        modal_content = WebDriverWait(driver, 3).until(
             EC.presence_of_element_located((By.ID, "swal2-content"))
         )
-        if "Vui lòng bấm lại load job" in reload_message.text:
-            print("Phát hiện thông báo yêu cầu load lại job")
+        content_text = modal_content.text.lower()
+        
+        # Xử lý các loại thông báo
+        if "vui lòng bấm lại load job" in content_text:
+            print("Phát hiện thông báo:", modal_content.text)
+            # Click nút OK trên modal
+            ok_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
+            )
+            ok_button.click()
+            print("Đã click nút OK")
+            time.sleep(2)  # Đợi modal đóng
+            return True
+        elif "hiện tại chưa có jobs mới" in content_text:
+            print("Phát hiện thông báo:", modal_content.text)
             # Click nút OK trên modal
             ok_button = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.swal2-styled"))
@@ -495,14 +520,12 @@ def main():
                     time.sleep(2)
                     # Kiểm tra loại job
                     job_type = check_job_type(driver)
-                    if job_type == "follow":
-                        print("Đã tìm thấy job follow")
-                        perform_follow(driver)
-                    elif job_type == "like":
+                    if job_type == "like":
                         print("Đã tìm thấy job like")
                         perform_like(driver)
-                    else:
-                        print("Không phải job follow hoặc like, bỏ qua")
+                    else:  # Mọi job khác đều xử lý như job follow
+                        print("Xử lý job như job follow")
+                        perform_follow(driver)
                 
                 time.sleep(3)  # Đợi một chút trước khi tìm job mới
                 

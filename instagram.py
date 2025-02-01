@@ -10,7 +10,7 @@ import re
 import psutil
 
 # Danh sách các profile và biến quản lý
-PROFILES = ['23'] # Profile 9, 10, 11, 18, 19, 23
+PROFILES = ['9'] # Profile 9, 10, 11, 15, 18, 19, 23
 current_profile_index = 0
 jobs_done = 0
 no_job_count = 0  # Biến đếm số lần gặp thông báo "chưa có jobs mới"
@@ -64,6 +64,9 @@ def setup_driver():
     options.add_argument(f'--user-data-dir={user_data_dir}')
     options.add_argument(f'--profile-directory=Profile {profile_number}')
     
+    # Set iOS Safari user agent
+    options.add_argument('--user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1')
+    
     # Stealth mode arguments
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-web-security')
@@ -76,12 +79,11 @@ def setup_driver():
     options.add_argument('--disable-popup-blocking')
     options.add_argument('--ignore-certificate-errors')
     options.add_argument('--enable-javascript')
+    options.add_argument(f'--window-size={1920 + random.randint(-100, 100)},{1080 + random.randint(-100, 100)}')
     
     # Thêm các arguments mới để tăng cường stealth
     options.add_argument('--disable-blink-features')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument(f'--window-size={1920 + random.randint(-100, 100)},{1080 + random.randint(-100, 100)}')
-    options.add_argument(f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(90, 108)}.0.0.0 Safari/537.36')
     
     # Khởi tạo driver với các tùy chọn đặc biệt
     driver = uc.Chrome(
@@ -116,13 +118,6 @@ def setup_driver():
                     filename: "internal-pdf-viewer",
                     length: 1,
                     name: "Chrome PDF Plugin"
-                },
-                {
-                    0: {type: "application/pdf", suffixes: "pdf", description: "Portable Document Format"},
-                    description: "Portable Document Format",
-                    filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai",
-                    length: 1,
-                    name: "Chrome PDF Viewer"
                 }
             ];
         }
@@ -159,68 +154,6 @@ def setup_driver():
     Object.defineProperty(navigator, 'deviceMemory', {
         get: () => 8
     });
-    
-    // Override Chrome
-    window.chrome = {
-        app: {
-            InstallState: {
-                DISABLED: 'disabled',
-                INSTALLED: 'installed',
-                NOT_INSTALLED: 'not_installed'
-            },
-            RunningState: {
-                CANNOT_RUN: 'cannot_run',
-                READY_TO_RUN: 'ready_to_run',
-                RUNNING: 'running'
-            },
-            getDetails: function() {},
-            getIsInstalled: function() {},
-            installState: function() {},
-            isInstalled: false,
-            runningState: function() {}
-        },
-        runtime: {
-            OnInstalledReason: {
-                CHROME_UPDATE: 'chrome_update',
-                INSTALL: 'install',
-                SHARED_MODULE_UPDATE: 'shared_module_update',
-                UPDATE: 'update'
-            },
-            OnRestartRequiredReason: {
-                APP_UPDATE: 'app_update',
-                OS_UPDATE: 'os_update',
-                PERIODIC: 'periodic'
-            },
-            PlatformArch: {
-                ARM: 'arm',
-                ARM64: 'arm64',
-                MIPS: 'mips',
-                MIPS64: 'mips64',
-                X86_32: 'x86-32',
-                X86_64: 'x86-64'
-            },
-            PlatformNaclArch: {
-                ARM: 'arm',
-                MIPS: 'mips',
-                MIPS64: 'mips64',
-                X86_32: 'x86-32',
-                X86_64: 'x86-64'
-            },
-            PlatformOs: {
-                ANDROID: 'android',
-                CROS: 'cros',
-                LINUX: 'linux',
-                MAC: 'mac',
-                OPENBSD: 'openbsd',
-                WIN: 'win'
-            },
-            RequestUpdateCheckStatus: {
-                NO_UPDATE: 'no_update',
-                THROTTLED: 'throttled',
-                UPDATE_AVAILABLE: 'update_available'
-            }
-        }
-    };
     """
     
     try:
@@ -231,15 +164,7 @@ def setup_driver():
         
         # Thêm các CDP commands để tăng cường stealth
         driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-        })
-        
-        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-            "source": """
-                Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 1});
-                Object.defineProperty(navigator, 'msMaxTouchPoints', {get: () => 1});
-                Object.defineProperty(navigator, 'webkitMaxTouchPoints', {get: () => 1});
-            """
+            "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
         })
         
     except Exception as e:
@@ -271,10 +196,12 @@ def check_job_type(driver):
             return "follow"
         elif "TĂNG LIKE CHO BÀI VIẾT" in job_text:
             return "like"
-        return None
+        # Nếu không phải follow hoặc like, mặc định là follow
+        print("Job không xác định, xử lý như job follow")
+        return "follow"
     except Exception as e:
         print(f"Không thể kiểm tra loại job: {str(e)}")
-        return None
+        return "follow"  # Mặc định là follow nếu có lỗi
 
 def handle_instagram_error(driver):
     try:
@@ -450,7 +377,7 @@ def check_reload_message(driver):
             print("Đã click nút OK")
             time.sleep(2)  # Đợi modal đóng
             
-            # Nếu gặp thông báo quá 5 lần, chuyển profile
+            # Nếu gặp thông báo quá 50000 lần, chuyển profile
             if no_job_count >= 50000:
                 print("Đã gặp thông báo không có job mới quá 5 lần, chuyển profile")
                 no_job_count = 0  # Reset biến đếm
@@ -566,15 +493,15 @@ def perform_follow(driver):
                 print(f"Lỗi khi thử follow lần {current_retry + 1}: {str(e)}")
             
             current_retry += 1
-            if current_retry == max_retries:
-                print("Tài khoản Instagram đã bị rate limited")
-                # Đóng tab Instagram và quay lại tab Golike
-                if len(driver.window_handles) > 1:
-                    driver.close()
-                    driver.switch_to.window(driver.window_handles[0])
-                # Chuyển sang profile tiếp theo do rate limit
-                driver = switch_to_next_profile(driver)
-                return False, True
+
+        # Nếu không tìm thấy hoặc không thể click nút Follow sau tất cả các lần thử
+        if not follow_clicked:
+            print("Không tìm thấy hoặc không thể click nút Follow")
+            # Đóng tab Instagram và quay lại tab Golike
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+            # Xử lý báo lỗi
+            return handle_instagram_error(driver)
 
         time.sleep(3)
 
@@ -797,20 +724,17 @@ def main():
                 
                 # Click nút Nhận Job ngay
                 if click_nhan_job(driver):
-                    time.sleep(2)
+                    time.sleep(1)
                     # Kiểm tra loại job
                     job_type = check_job_type(driver)
                     success, need_switch = False, False
                     
-                    if job_type == "follow":
-                        print("Đã tìm thấy job follow")
-                        success, need_switch = perform_follow(driver)
-                    elif job_type == "like":
+                    if job_type == "like":
                         print("Đã tìm thấy job like")
                         success, need_switch = perform_like(driver)
-                    else:
-                        print("Không phải job follow hoặc like, bỏ qua")
-                        success, need_switch = False, False
+                    else:  # Mọi job khác đều xử lý như job follow
+                        print("Xử lý job như job follow")
+                        success, need_switch = perform_follow(driver)
                     
                     # Nếu job thành công và cần đổi profile hoặc bị rate limit
                     if need_switch:

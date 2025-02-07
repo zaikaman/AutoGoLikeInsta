@@ -10,7 +10,7 @@ import re
 import psutil
 
 # Danh sách các profile và biến quản lý
-PROFILES = ['9'] # Profile 9, 10, 11, 15, 18, 19, 23
+PROFILES = ['10'] # Profile 9, 10, 11, 15, 18, 19, 23
 current_profile_index = 0
 jobs_done = 0
 no_job_count = 0  # Biến đếm số lần gặp thông báo "chưa có jobs mới"
